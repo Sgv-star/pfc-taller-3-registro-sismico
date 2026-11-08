@@ -43,22 +43,57 @@ class RegistroSismico {
 
   // Punto 2: agrupar con mapas --------------------------------------------------
 
-  def porRegion(r: Registro): Map[String, List[Sismo]] = ???
+  def porRegion(r: Registro): Map[String, List[Sismo]] = {
+    (for {
+      r1 <- r
+    }yield r1.region -> (for{
+      r2 <- r
+      if r1.region == r2.region
+    }yield r2)).toMap
+  }
 
-  def conteoPorRegion(r: Registro): Map[String, Int] = ???
+  def conteoPorRegion(r: Registro): Map[String, Int] =
+    (for {
+      s1 <- r
+    } yield s1.region -> (for {
+      s2 <- r
+      if s2.region == s1.region
+    } yield s2).size).toMap
 
-  def magnitudMaxima(r: Registro): Map[String, Double] = ???
+  def magnitudMaxima(r: Registro): Map[String, Double] =
+    (for {
+      s1 <- r
+    } yield s1.region -> (for {
+      s2 <- r
+      if s2.region == s1.region
+    } yield s2.magnitud).max).toMap
 
   // Punto 3: consultas seguras --------------------------------------------------
 
   /** Un mapa que responde cero por las regiones que no están en el registro. */
-  def conteoSeguro(r: Registro): Map[String, Int] = ???
+  def conteoSeguro(r: Registro): Map[String, Int] = {
+    conteoPorRegion(r).withDefaultValue(0)
+  }
+
 
   /** La magnitud máxima de una región, o vacío si no hay registros suyos. */
-  def maximaDe(r: Registro, region: String): Option[Double] = ???
+  def maximaDe(r: Registro, region: String): Option[Double] = {
+    (for {
+      s <- r
+      if s.region == region
+    } yield s.magnitud).maxOption
+  }
 
   /** La región con más sismos; en empate, la primera en orden alfabético. */
-  def regionMasActiva(r: Registro): Option[String] = ???
+  def regionMasActiva(r: Registro): Option[String] = {
+    val regiones = conteoSeguro(r)
+    (for {
+      (region, n) <- regiones
+      if regiones.forall { case (otra, m) => m < n || (m == n && region <= otra)
+      }
+    } yield region).headOption
+  }
+
 
   // Punto 4: réplicas perezosas -------------------------------------------------
 
