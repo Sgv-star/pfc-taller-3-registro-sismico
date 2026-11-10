@@ -65,6 +65,27 @@ class RegistroSismicoTest extends AnyFunSuite {
   test("paresCercanos: nunca empareja una región consigo misma") {
     assert(paresCercanos(registro, 5.0).forall { case (a, b) => a != b })
   }
+  test("fuertes: los que superan 4.0, en orden y con repetidos") {
+    assert(fuertes(registro, 4.0) ==
+      List("Valle", "Santander", "Choco", "Santander", "Valle"))
+  }
+
+  test("fuertes: sobre el registro vacío no hay ninguno") {
+    assert(fuertes(vacio, 3.0) == List())
+  }
+
+  test("enRegion: las magnitudes de Santander") {
+    assert(enRegion(registro, "Santander") == List(5.1, 4.7))
+  }
+
+  test("paresCercanos: con 0.8 salen Valle-Santander y Valle-Choco") {
+    assert(paresCercanos(registro, 0.8) ==
+      List(("Valle", "Santander"), ("Valle", "Choco")))
+  }
+
+  test("paresCercanos: sobre el registro vacío no hay parejas") {
+    assert(paresCercanos(vacio, 1.0) == List())
+  }
 
   // Punto 2 -------------------------------------------------------------------
 
@@ -89,6 +110,28 @@ class RegistroSismicoTest extends AnyFunSuite {
 
   test("magnitudMaxima: las regiones ausentes no aparecen") {
     assert(!magnitudMaxima(registro).contains("Amazonas"))
+  }
+  test("porRegion: Santander agrupa sus dos sismos en orden") {
+    assert(porRegion(registro)("Santander") ==
+      List(Sismo(Fecha(2025, 3), "Santander", 5.1, 150),
+        Sismo(Fecha(2025, 5), "Santander", 4.7, 160)))
+  }
+
+  test("porRegion: el registro vacío da el mapa vacío") {
+    assert(porRegion(vacio) == Map())
+  }
+
+  test("conteoPorRegion: los conteos suman el total de sismos") {
+    assert(conteoPorRegion(registro).values.sum == 7)
+  }
+
+  test("magnitudMaxima: el registro vacío da el mapa vacío") {
+    assert(magnitudMaxima(vacio) == Map())
+  }
+
+  test("magnitudMaxima: una región con un solo sismo") {
+    val uno = List(Sismo(Fecha(2025, 1), "Arauca", 4.0, 10))
+    assert(magnitudMaxima(uno) == Map("Arauca" -> 4.0))
   }
 
   // Punto 3 -------------------------------------------------------------------
@@ -127,6 +170,29 @@ class RegistroSismicoTest extends AnyFunSuite {
       Sismo(Fecha(2025, 1), "Arauca", 4.0, 10))
     assert(regionMasActiva(empate) == Some("Arauca"))
   }
+  test("conteoSeguro: el Chocó responde dos") {
+    assert(conteoSeguro(registro)("Choco") == 2)
+  }
+
+  test("conteoSeguro: conocida y desconocida en la misma consulta") {
+    assert(conteoSeguro(registro)("Valle") + conteoSeguro(registro)("Amazonas") == 3)
+  }
+
+  test("maximaDe: Santander llega a 5.1") {
+    assert(maximaDe(registro, "Santander") == Some(5.1))
+  }
+
+  test("maximaDe: sobre el registro vacío da vacío") {
+    assert(maximaDe(vacio, "Valle") == None)
+  }
+
+  test("regionMasActiva: gana la región con más sismos aunque sea la última alfabéticamente") {
+    val registroZulia = List(
+      Sismo(Fecha(2025, 1), "Zulia", 4.0, 10),
+      Sismo(Fecha(2025, 2), "Zulia", 3.5, 12),
+      Sismo(Fecha(2025, 3), "Arauca", 4.0, 10))
+    assert(regionMasActiva(registroZulia) == Some("Zulia"))
+  }
 
   // Punto 4 -------------------------------------------------------------------
 
@@ -157,6 +223,25 @@ class RegistroSismicoTest extends AnyFunSuite {
   test("replicasSensibles: el mínimo es estricto") {
     assert(replicasSensibles(3.0, 3.0) == List())
   }
+  test("replicas: las primeras tres de un sismo de 4.0") {
+    assert(replicas(4.0).take(3).toList == List(4.0, 3.2, 2.56))
+  }
+
+  test("replicas: las primeras tres de un sismo de 1.0") {
+    assert(replicas(1.0).take(3).toList == List(1.0, 0.8, 0.64))
+  }
+
+  test("replicas: el elemento en la posición 10 de un sismo de 5.0") {
+    assert(replicas(5.0)(10) == 0.54)
+  }
+
+  test("replicasSensibles: las que superan 3.0 partiendo de 6.0") {
+    assert(replicasSensibles(6.0, 3.0) == List(6.0, 4.8, 3.84, 3.07))
+  }
+
+  test("replicasSensibles: con un mínimo muy alto no hay ninguna") {
+    assert(replicasSensibles(5.0, 10.0) == List())
+  }
 
   // Punto 5 -------------------------------------------------------------------
 
@@ -184,5 +269,31 @@ class RegistroSismicoTest extends AnyFunSuite {
   test("informe: las réplicas coinciden con replicasSensibles del más fuerte") {
     assert(informe(registro, 3.0)("Choco").replicas ==
       replicasSensibles(6.0, 3.0).length)
+  }
+  test("informe: el resumen del Valle") {
+    assert(informe(registro, 3.0)("Valle") == Resumen(3, 5.3, 3))
+  }
+
+  test("informe: tiene una entrada por cada región del registro") {
+    assert(informe(registro, 3.0).keySet == Set("Valle", "Santander", "Choco"))
+  }
+
+  test("informe: con un mínimo muy alto no hay réplicas en ninguna región") {
+    assert(informe(registro, 10.0) ==
+      Map("Valle" -> Resumen(3, 5.3, 0),
+        "Santander" -> Resumen(2, 5.1, 0),
+        "Choco" -> Resumen(2, 6.0, 0)))
+  }
+
+  test("informe: una región con un solo sismo") {
+    val uno = List(Sismo(Fecha(2025, 1), "Arauca", 5.0, 10))
+    assert(informe(uno, 3.0) == Map("Arauca" -> Resumen(1, 5.0, 3)))
+  }
+
+  test("informe: con mínimo 5.0 cada región tiene una sola réplica") {
+    assert(informe(registro, 5.0) ==
+      Map("Valle" -> Resumen(3, 5.3, 1),
+        "Santander" -> Resumen(2, 5.1, 1),
+        "Choco" -> Resumen(2, 6.0, 1)))
   }
 }
