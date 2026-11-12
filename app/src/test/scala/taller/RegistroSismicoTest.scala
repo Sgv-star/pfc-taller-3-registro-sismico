@@ -87,6 +87,71 @@ class RegistroSismicoTest extends AnyFunSuite {
     assert(paresCercanos(vacio, 1.0) == List())
   }
 
+  test("enRegion: una región en minúsculas no coincide") {
+    assert(enRegion(registro, "choco") == List())
+  }
+
+  test("enRegion: dos nombres que comparten una palabra no se confunden") {
+    val parecidas = List(
+      Sismo(Fecha(2026, 1), "Cauca", 4.0, 20),
+      Sismo(Fecha(2026, 2), "Valle del Cauca", 5.0, 30))
+    assert(enRegion(parecidas, "Cauca") == List(4.0))
+    assert(enRegion(parecidas, "Valle del Cauca") == List(5.0))
+  }
+
+  test("fuertes: con un umbral negativo pasan todos, con repetidos") {
+    assert(fuertes(registro, -1.0).length == 7)
+  }
+
+  test("fuertes: con 5.3 no sale el sismo de magnitud exacta") {
+    assert(!fuertes(registro, 5.3).contains("Valle"))
+  }
+
+  test("paresCercanos: con dif 0.0 solo empareja magnitudes idénticas") {
+    val iguales = List(
+      Sismo(Fecha(2026, 1), "Huila", 4.5, 20),
+      Sismo(Fecha(2026, 1), "Tolima", 4.5, 30),
+      Sismo(Fecha(2026, 2), "Cauca", 4.6, 40))
+    assert(paresCercanos(iguales, 0.0) == List(("Huila", "Tolima")))
+  }
+
+  test("paresCercanos: con una región sola no hay parejas") {
+    val soloUna = List(
+      Sismo(Fecha(2026, 1), "Cauca", 4.0, 20),
+      Sismo(Fecha(2026, 2), "Cauca", 5.0, 30))
+    assert(paresCercanos(soloUna, 5.0) == List())
+  }
+
+  test("enRegion: no se lleva las magnitudes de otras regiones") {
+    assert(enRegion(registro, "Choco") == List(6.0, 3.1))
+  }
+
+  test("fuertes: un sismo justo por encima del umbral sí sale") {
+    assert(fuertes(List(Sismo(Fecha(2026, 1), "Tolima", 4.01, 12)), 4.0) == List("Tolima"))
+  }
+
+  test("enRegion: dos regiones en el mismo registro no se mezclan") {
+    val dos = List(
+      Sismo(Fecha(2026, 1), "Huila", 3.5, 10),
+      Sismo(Fecha(2026, 2), "Tolima", 4.5, 12),
+      Sismo(Fecha(2026, 3), "Huila", 5.5, 14))
+    assert(enRegion(dos, "Huila") == List(3.5, 5.5))
+  }
+
+  test("enRegion: conserva las magnitudes repetidas de una región") {
+    val repetido = List(
+      Sismo(Fecha(2026, 2), "Narino", 4.0, 20),
+      Sismo(Fecha(2026, 3), "Narino", 4.0, 45))
+    assert(enRegion(repetido, "Narino") == List(4.0, 4.0))
+  }
+
+  test("paresCercanos: la diferencia igual a dif también cuenta") {
+    val pareja = List(
+      Sismo(Fecha(2026, 1), "Huila", 4.0, 20),
+      Sismo(Fecha(2026, 1), "Tolima", 4.5, 30))
+    assert(paresCercanos(pareja, 0.5) == List(("Huila", "Tolima")))
+  }
+
   // Punto 2 -------------------------------------------------------------------
 
   test("porRegion: agrupa los siete sismos en tres regiones") {
@@ -194,6 +259,136 @@ class RegistroSismicoTest extends AnyFunSuite {
     assert(regionMasActiva(registroZulia) == Some("Zulia"))
   }
 
+  test("porRegion: cada región guarda solo sus propios sismos") {
+    assert(porRegion(registro)("Choco").map(_.magnitud) == List(6.0, 3.1))
+  }
+
+  test("porRegion: conserva el orden de aparición dentro de cada región") {
+    assert(porRegion(registro)("Valle").map(_.fecha) ==
+      List(Fecha(2025, 3), Fecha(2025, 4), Fecha(2025, 5)))
+  }
+
+  test("conteoPorRegion: dos regiones con el mismo conteo quedan separadas") {
+    val parejo = List(
+      Sismo(Fecha(2026, 1), "Caldas", 4.0, 10),
+      Sismo(Fecha(2026, 2), "Quindio", 3.5, 12))
+    assert(conteoPorRegion(parejo) == Map("Caldas" -> 1, "Quindio" -> 1))
+  }
+
+  test("conteoPorRegion: una sola región acumula todos sus sismos") {
+    val una = List(
+      Sismo(Fecha(2026, 1), "Narino", 4.0, 10),
+      Sismo(Fecha(2026, 2), "Narino", 3.5, 12),
+      Sismo(Fecha(2026, 3), "Narino", 5.0, 14))
+    assert(conteoPorRegion(una) == Map("Narino" -> 3))
+  }
+
+  test("magnitudMaxima: toma la primera aparición, no la última") {
+    val orden = List(
+      Sismo(Fecha(2026, 1), "Huila", 5.2, 10),
+      Sismo(Fecha(2026, 2), "Huila", 3.1, 12))
+    assert(magnitudMaxima(orden) == Map("Huila" -> 5.2))
+  }
+
+  test("conteoSeguro: cada región conocida trae su propio conteo") {
+    assert(conteoSeguro(registro)("Santander") == 2)
+    assert(conteoSeguro(registro)("Valle") == 3)
+  }
+
+  test("maximaDe: una región de un solo sismo devuelve su magnitud") {
+    val uno = List(Sismo(Fecha(2026, 1), "Tolima", 4.4, 15))
+    assert(maximaDe(uno, "Tolima") == Some(4.4))
+  }
+
+  test("regionMasActiva: sin empate gana la de más sismos aunque no sea la primera") {
+    val otra = List(
+      Sismo(Fecha(2026, 1), "Arauca", 4.0, 10),
+      Sismo(Fecha(2026, 2), "Cauca", 3.9, 11),
+      Sismo(Fecha(2026, 3), "Cauca", 4.1, 12))
+    assert(regionMasActiva(otra) == Some("Cauca"))
+  }
+
+  test("porRegion: con una sola región el mapa tiene una entrada") {
+    val una = List(
+      Sismo(Fecha(2026, 1), "Caldas", 4.0, 10),
+      Sismo(Fecha(2026, 2), "Caldas", 3.5, 12))
+    assert(porRegion(una).keySet == Set("Caldas") && porRegion(una)("Caldas").length == 2)
+  }
+
+  test("conteoPorRegion: tres regiones con un sismo cada una") {
+    val tres = List(
+      Sismo(Fecha(2026, 1), "Huila", 4.0, 10),
+      Sismo(Fecha(2026, 1), "Tolima", 4.1, 11),
+      Sismo(Fecha(2026, 1), "Cauca", 4.2, 12))
+    assert(conteoPorRegion(tres) == Map("Huila" -> 1, "Tolima" -> 1, "Cauca" -> 1))
+  }
+
+  test("conteoPorRegion: una región lejana en el tiempo cuenta igual") {
+    val lejos = List(
+      Sismo(Fecha(2025, 1), "Narino", 4.0, 10),
+      Sismo(Fecha(2026, 12), "Narino", 4.1, 11))
+    assert(conteoPorRegion(lejos) == Map("Narino" -> 2))
+  }
+
+  test("magnitudMaxima: el máximo no depende del orden de los sismos") {
+    val primeroBajo = List(
+      Sismo(Fecha(2026, 1), "Cauca", 3.0, 10),
+      Sismo(Fecha(2026, 2), "Cauca", 6.2, 12))
+    val primeroAlto = primeroBajo.reverse
+    assert(magnitudMaxima(primeroBajo) == magnitudMaxima(primeroAlto))
+    assert(magnitudMaxima(primeroBajo) == Map("Cauca" -> 6.2))
+  }
+
+  test("magnitudMaxima: varias regiones no comparten su máximo") {
+    val varias = List(
+      Sismo(Fecha(2026, 1), "Huila", 5.0, 10),
+      Sismo(Fecha(2026, 1), "Tolima", 6.0, 11),
+      Sismo(Fecha(2026, 2), "Huila", 4.0, 12))
+    assert(magnitudMaxima(varias) == Map("Huila" -> 5.0, "Tolima" -> 6.0))
+  }
+
+  test("conteoSeguro: la región desconocida no se agrega al mapa") {
+    assert(!conteoSeguro(registro).contains("Amazonas"))
+  }
+
+  test("conteoSeguro: responde cero también para nombres con otra capitalización") {
+    assert(conteoSeguro(registro)("VALLE") == 0)
+  }
+
+  test("maximaDe: la región más activa y la de mayor magnitud pueden diferir") {
+    assert(regionMasActiva(registro) == Some("Valle"))
+    assert(maximaDe(registro, "Valle") == Some(5.3))
+  }
+
+  test("maximaDe: una región con dos sismos toma el mayor, no el último") {
+    val dos = List(
+      Sismo(Fecha(2026, 1), "Caldas", 5.8, 10),
+      Sismo(Fecha(2026, 2), "Caldas", 2.9, 12))
+    assert(maximaDe(dos, "Caldas") == Some(5.8))
+  }
+
+  test("regionMasActiva: tres regiones, gana la del medio por conteo") {
+    val tres = List(
+      Sismo(Fecha(2026, 1), "Huila", 4.0, 10),
+      Sismo(Fecha(2026, 1), "Tolima", 4.1, 11),
+      Sismo(Fecha(2026, 2), "Tolima", 4.2, 12),
+      Sismo(Fecha(2026, 1), "Cauca", 4.3, 13))
+    assert(regionMasActiva(tres) == Some("Tolima"))
+  }
+
+  test("regionMasActiva: en un empate de tres gana la primera alfabéticamente") {
+    val empate = List(
+      Sismo(Fecha(2026, 1), "Tolima", 4.0, 10),
+      Sismo(Fecha(2026, 1), "Cauca", 4.1, 11),
+      Sismo(Fecha(2026, 1), "Huila", 4.2, 12))
+    assert(regionMasActiva(empate) == Some("Cauca"))
+  }
+
+  test("regionMasActiva: con un solo sismo devuelve su región") {
+    val uno = List(Sismo(Fecha(2026, 1), "Quindio", 4.0, 10))
+    assert(regionMasActiva(uno) == Some("Quindio"))
+  }
+
   // Punto 4 -------------------------------------------------------------------
 
   test("replicas: las primeras cuatro de un sismo de 5.0") {
@@ -235,12 +430,41 @@ class RegistroSismicoTest extends AnyFunSuite {
     assert(replicas(5.0)(10) == 0.54)
   }
 
+  test("replicas: cada elemento es el ochenta por ciento del anterior") {
+    val secuencia = replicas(5.0).take(5).toList
+    assert(secuencia.tail.zip(secuencia).forall {
+      case (siguiente, actual) => siguiente == Math.round(actual * 0.8 * 100.0) / 100.0
+    })
+  }
+
+  test("replicas: pedir un elemento no exige conocer el siguiente") {
+    assert(replicas(5.0).take(1).toList == List(5.0))
+  }
+
   test("replicasSensibles: las que superan 3.0 partiendo de 6.0") {
     assert(replicasSensibles(6.0, 3.0) == List(6.0, 4.8, 3.84, 3.07))
   }
 
   test("replicasSensibles: con un mínimo muy alto no hay ninguna") {
     assert(replicasSensibles(5.0, 10.0) == List())
+  }
+
+  test("replicasSensibles: con un mínimo bajo se corta en el valor exacto") {
+    assert(replicasSensibles(2.5, 1.6) == List(2.5, 2.0))
+  }
+
+  test("replicasSensibles: cada valor es el ochenta por ciento del anterior") {
+    val lista = replicasSensibles(6.0, 2.0)
+    assert(lista.tail.zip(lista).forall {
+      case (siguiente, actual) => siguiente == Math.round(actual * 0.8 * 100.0) / 100.0
+    })
+  }
+
+  test("replicasSensibles: las réplicas siempre decrecen") {
+    val lista = replicasSensibles(7.0, 1.5)
+    assert(lista.length > 1 && lista.tail.zip(lista).forall {
+      case (siguiente, actual) => siguiente < actual
+    })
   }
 
   // Punto 5 -------------------------------------------------------------------
