@@ -1,279 +1,246 @@
-# Ejemplo de informe de corrección
+# Informe de corrección — Taller 3: registro sísmico
 
 Fundamentos de Programación Funcional y Concurrente.
-Documento realizado por el docente Juan Francisco Díaz.
 
-## 1. Argumentar la corrección de programas recursivos
+## 0. Notación y herramientas
 
-Sea $f : A \to B$ una función, y $A$ un conjunto definido recursivamente
-(recordar la definición de Matemáticas Discretas I), como por ejemplo los
-naturales o las listas.
+Sea $r = [s_1, s_2, \ldots, s_n]$ un registro, con $s_i = (\text{fecha}_i, \text{region}_i, \text{mag}_i, \text{prof}_i)$.
+Escribimos $\text{reg}(s)$ y $\text{mag}(s)$ para la región y la magnitud de un sismo $s$.
+Para una lista $l$ y una región $k$ definimos:
 
-Sea $P_f$ un programa recursivo (lineal o en árbol) desarrollado en Scala (o en
-cualquier lenguaje de programación) hecho para calcular $f$:
+```math
+R(l) = \{\, \text{reg}(s) \mid s \in l \,\}
+\qquad
+S_k(l) = [\, s_i \mid s_i \in l,\ \text{reg}(s_i) = k \,]
+```
+
+$S_k(l)$ es la sublista de los sismos de la región $k$, **conservando el orden** original.
+
+**Traducción de la expresión `for`.** El compilador traduce
 
 ```scala
-def Pf(a: A): B = { // Pf recibe a de tipo A, y devuelve f(a) de tipo B
-  ...
-}
+for { x <- l; if p(x) } yield g(x)   ==>   l.withFilter(p).map(g)
 ```
 
-¿Cómo argumentar que $P_f(a)$ siempre devuelve $f(a)$ como respuesta? Es decir,
-¿cómo argumentar que $P_f$ es correcto con respecto a su especificación?
+### Lema 1 (filtrar y transformar)
 
-La respuesta es sencilla: demostrando el siguiente teorema.
+Para toda lista $l = [x_1, \ldots, x_n]$, predicado $p$ y función $g$:
 
 ```math
-\forall a \in A : P_f(a) == f(a)
+\texttt{for}\{x \leftarrow l;\ \texttt{if}\ p(x)\}\ \texttt{yield}\ g(x) \;=\; [\, g(x_i) \mid 1 \le i \le n,\ p(x_i) \,]
 ```
 
-Cuando uno tiene que demostrar que algo se cumple para todos los elementos de
-un conjunto definido recursivamente, es natural usar inducción estructural. En
-términos prácticos, esto significa demostrar que:
+**Demostración** (inducción estructural sobre $l$). Sea $Q(l)$ el lado izquierdo.
 
-- Para cada valor básico $a$ de $A$, se tiene que $P_f(a) == f(a)$.
-- Para cada valor $a \in A$ construido recursivamente a partir de otro(s)
-  valor(es) $a' \in A$, se tiene que
-  $P_f(a') == f(a') \rightarrow P_f(a) == f(a)$. (Esta es la hipótesis de
-  inducción).
+- **Caso base:** $l = \text{Nil}$. $Q(\text{Nil}) = \text{Nil}$, y el lado derecho también es la lista vacía.
+- **Caso de inducción:** $l = x :: t$, con $Q(t) = [\, g(y) \mid y \in t,\ p(y) \,]$ (HI). Por la definición de `withFilter` y `map` sobre listas:
 
-### Ejemplo: factorial recursivo
+```math
+Q(x :: t) =
+\begin{cases}
+g(x) :: Q(t) & \text{si } p(x) \\
+Q(t) & \text{si } \neg p(x)
+\end{cases}
+```
 
-Sea $f : \mathbb{N} \to \mathbb{N}$ la función que calcula el factorial de un
-número natural, es decir, $f(n) = n!$. Y sea $P_f$ el siguiente programa en
-Scala:
+Aplicando la HI, en ambos casos se obtiene $[\, g(y) \mid y \in x::t,\ p(y) \,]$, en el mismo orden. $\blacksquare$
+
+## 1. Punto 1: consultas con expresiones `for`
+
+### 1.1 `fuertes`
+
+**Especificación:** $\text{fuertes}(r, u) = [\, \text{reg}(s) \mid s \in r,\ \text{mag}(s) > u \,]$, con repetidos y en orden.
+
+El código es `for { s <- r; if s.magnitud > umbral } yield s.region`. Es el Lema 1 con $p(s) \equiv \text{mag}(s) > u$ y $g(s) = \text{reg}(s)$. Por lo tanto $P_{\text{fuertes}}(r, u) = \text{fuertes}(r, u)$. $\blacksquare$
+
+### 1.2 `enRegion`
+
+**Especificación:** $\text{enRegion}(r, k) = [\, \text{mag}(s) \mid s \in S_k(r) \,]$.
+
+El código es `for { s <- r; if s.region == region } yield s.magnitud`. Es el Lema 1 con $p(s) \equiv \text{reg}(s) = k$ y $g(s) = \text{mag}(s)$. Si $k \notin R(r)$ ningún elemento cumple $p$ y el resultado es $[\,]$. $\blacksquare$
+
+### 1.3 `paresCercanos`
+
+Sea $R(r)$ las regiones distintas y $[g_1, \ldots, g_m]$ su orden de **primera aparición** en $r$. Sea $M_k = \text{enRegion}(r, k)$. Definimos:
+
+```math
+\text{cerc}(a, b) \iff \exists\, x \in M_a,\ \exists\, y \in M_b : |x - y| \le \text{dif}
+```
+
+**Especificación:**
+
+```math
+\text{paresCercanos}(r, \text{dif}) = [\, (g_i, g_j) \mid 1 \le i < j \le m,\ \text{cerc}(g_i, g_j) \,]
+```
+
+ordenada lexicográficamente por $(i, j)$.
+
+**Argumento.**
+
+1. `(for { s <- r } yield s.region).distinct` es $[g_1, \ldots, g_m]$. Por el Lema 1 el `for` produce las regiones de $r$ en orden, y `distinct` conserva la primera aparición de cada una.
+2. `regiones.tails` produce las listas $T_j = [g_j, \ldots, g_m]$ para $j = 1, \ldots, m+1$, con $T_{m+1} = \text{Nil}$.
+3. El patrón `a :: resto <- ...` descarta $T_{m+1}$ (no encaja con `::`). Para $T_j$ con $j \le m$ liga $a = g_j$ y $\text{resto} = [g_{j+1}, \ldots, g_m]$.
+4. Para cada $T_j$, el generador `b <- resto` recorre $g_{j+1}, \ldots, g_m$ en orden, y el filtro deja los que cumplen $\text{cerc}(a, b)$.
+5. La función `cercanas(a, b)` implementa $\text{cerc}(a, b)$ porque `exists` sobre una lista equivale a $\exists$ sobre sus elementos.
+
+Los pares generados son exactamente los $(g_i, g_j)$ con $i < j$ y $\text{cerc}(g_i, g_j)$, y salen por $i$ creciente y luego por $j$ creciente.
+
+**Sin repetidos ni simétricos.** Como los $g_i$ son distintos, $g_i \ne g_j$ siempre. El par $\{g_i, g_j\}$ solo se genera cuando $a = g_i$ y $b = g_j$ con $i < j$. Nunca se genera $(g_j, g_i)$, porque $g_i$ no está en el $\text{resto}$ de $T_j$. Además $\text{cerc}$ es simétrica, pues $|x - y| = |y - x|$, así que elegir esta orientación no pierde ningún par. $\blacksquare$
+
+## 2. Punto 2: agrupar con mapas
+
+### 2.1 `porRegion`
+
+**Especificación:** $\text{porRegion}(r)$ es el mapa $M$ con $\text{dom}(M) = R(r)$ y $M(k) = S_k(r)$.
+
+`r.groupBy(_.region)` procesa $r$ elemento por elemento, agregando cada sismo al final de la lista de su región. Lo formalizamos como un proceso iterativo:
+
+- **Estado:** $s = (i, M)$, donde $i$ es la cantidad de sismos procesados y $M$ un mapa.
+- **Estado inicial:** $s_0 = (0, \text{Map}())$.
+- **Estado final:** $i = n$.
+- **Transformación:** $\text{transformar}(i, M) = (i+1,\ M[\text{reg}(s_{i+1}) \mapsto M(\text{reg}(s_{i+1})) \mathbin{+\!\!+} [s_{i+1}]\,])$, tomando $M(k) = [\,]$ si $k \notin \text{dom}(M)$.
+- **Invariante:**
+
+```math
+\text{Inv}(i, M) \equiv \text{dom}(M) = R([s_1..s_i]) \ \land\ \forall k \in \text{dom}(M) : M(k) = S_k([s_1..s_i])
+```
+
+**Demostración.**
+
+1. $\text{Inv}(s_0)$: $\text{dom}(\text{Map}()) = \emptyset = R([\,])$ y no hay llaves que verificar.
+2. Si $\text{Inv}(i, M)$ y $i < n$, sea $k = \text{reg}(s_{i+1})$. Después de transformar, la llave $k$ queda en el dominio y $M'(k) = S_k([s_1..s_i]) \mathbin{+\!\!+} [s_{i+1}] = S_k([s_1..s_{i+1}])$. Las demás llaves no cambian y siguen cumpliendo la invariante. Entonces $\text{Inv}(i+1, M')$.
+3. En el estado final, $\text{Inv}(n, M)$ da $\text{dom}(M) = R(r)$ y $M(k) = S_k(r)$.
+4. En cada paso $i$ aumenta en 1, así que tras $n$ pasos se llega al estado final.
+
+Por lo tanto $P_{\text{porRegion}}(r) = \text{porRegion}(r)$. Si $r = [\,]$ el resultado es $\text{Map}()$, y las regiones que no están en $r$ no aparecen. $\blacksquare$
+
+### 2.2 `conteoPorRegion`
+
+**Especificación:** $\text{conteoPorRegion}(r) = \{\, k \mapsto |S_k(r)| \mid k \in R(r) \,\}$.
+
+El código `for ((region, ss) <- porRegion(r)) yield region -> ss.size` se traduce a
 
 ```scala
-def Pf(n: Int): Int = { // Pf recibe n de tipo Int, y devuelve n! de tipo Int
-  if (n == 0) 1 else n * Pf(n - 1)
-}
+porRegion(r).withFilter { case (region, ss) => true }.map { case (region, ss) => region -> ss.size }
 ```
 
-Vamos a demostrar que $\forall n \in \mathbb{N} : P_f(n) == n!$
+Es decir, a un `map` sobre las entradas de $\text{porRegion}(r)$ que reemplaza cada lista $S_k(r)$ por su tamaño. Por 2.1, las llaves son $R(r)$ y la lista de la llave $k$ es $S_k(r)$, así que el valor es $|S_k(r)|$. $\blacksquare$
 
-**Caso base:** $n = 0$
+### 2.3 `magnitudMaxima`
+
+**Especificación:** $\text{magnitudMaxima}(r) = \{\, k \mapsto \max\{\text{mag}(s) \mid s \in S_k(r)\} \mid k \in R(r) \,\}$.
+
+Es el mismo `map` sobre las entradas de $\text{porRegion}(r)$, reemplazando $S_k(r)$ por `ss.map(_.magnitud).max`. Este `.max` está bien definido: si $k \in R(r)$, entonces $S_k(r) \neq [\,]$ (existe al menos un sismo de la región $k$), y el máximo de una lista no vacía existe. $\blacksquare$
+
+## 3. Punto 3: consultas seguras
+
+### 3.1 `conteoSeguro`
+
+**Especificación:**
 
 ```math
-P_f(0) \rightarrow \text{if } (0 == 0)\ 1 \text{ else } 0 \ast P_f(-1) \rightarrow 1
+\text{conteoSeguro}(r)(k) =
+\begin{cases}
+|S_k(r)| & \text{si } k \in R(r) \\
+0 & \text{si } k \notin R(r)
+\end{cases}
 ```
 
-Por otro lado, $f(0) = 0! = 1$. Entonces $P_f(0) == f(0)$.
+`withDefaultValue(0)` devuelve un mapa que se comporta igual que el original para las llaves presentes y devuelve $0$ para las ausentes. Por 2.2, el mapa original tiene $k \mapsto |S_k(r)|$ para $k \in R(r)$, así que se cumple la especificación. $\blacksquare$
 
-**Caso de inducción:** $n = k + 1$, $k \geq 0$. Hay que demostrar:
-$P_f(k) == f(k) \rightarrow P_f(k + 1) == f(k + 1)$
+### 3.2 `maximaDe`
+
+**Especificación:**
 
 ```math
-P_f(k+1) \rightarrow \text{if } (k+1 == 0)\ 1 \text{ else } (k+1) \ast P_f(k) \rightarrow (k+1) \ast P_f(k)
+\text{maximaDe}(r, k) =
+\begin{cases}
+\text{Some}\left(\max\{\text{mag}(s) \mid s \in S_k(r)\}\right) & \text{si } S_k(r) \ne [\,] \\
+\text{None} & \text{si } S_k(r) = [\,]
+\end{cases}
 ```
 
-Usando la hipótesis de inducción (HI):
+Por el Lema 1, el `for` produce $L = [\, \text{mag}(s) \mid s \in S_k(r) \,]$. La función `maxOption` devuelve `None` si $L = [\,]$ y `Some(max L)` si no. Como $L = [\,]$ exactamente cuando $S_k(r) = [\,]$, se cumple la especificación. $\blacksquare$
+
+### 3.3 `regionMasActiva`
+
+Sea $c(k) = |S_k(r)|$. **Especificación:** si $r = [\,]$ el resultado es `None`. Si no, es `Some(k*)` donde $k^*$ es la región con mayor $c$ y, en empate, la menor alfabéticamente:
 
 ```math
-\rightarrow (k+1) \ast k! = (k+1)!
+k^* = \min_{\prec} R(r), \qquad a \prec b \iff c(a) > c(b) \ \lor\ (c(a) = c(b) \land a < b)
 ```
 
-Por lo tanto, $P_f(k + 1) == f(k + 1)$.
-
-Concluimos por inducción que $\forall n \in \mathbb{N} : P_f(n) == n!$
-
-### Ejemplo: el máximo de una lista
-
-Sea $f : \text{List}[\mathbb{N}] \to \mathbb{N}$ la función que calcula el
-máximo de una lista de enteros positivos, no vacía. Y sea $P_f$ el siguiente
-programa en Scala:
-
-```scala
-def maxLin(l: List[Int]): Int = {
-  if (l.tail.isEmpty) l.head
-  else math.max(maxLin(l.tail), l.head)
-}
-```
-
-Demostraremos que:
+**Argumento.** Con $c$ = `conteoSeguro(r)`, el filtro del `for` deja una región $k$ si
 
 ```math
-\forall n \in \mathbb{N} \setminus \{0\} : P_f(\text{List}(a_1, a_2, \ldots, a_n)) == f(\text{List}(a_1, a_2, \ldots, a_n))
+\text{Cand}(k) \equiv \forall (o, m) \in c : \ m < c(k)\ \lor\ (m = c(k) \land k \le o)
 ```
 
-**Caso base:** $n = 1$
+1. **$k^*$ cumple $\text{Cand}$.** Para toda otra región $o$, $k^* \prec o$, es decir $c(k^*) > c(o)$ o ($c(k^*) = c(o)$ y $k^* < o$). Para $o = k^*$ la condición se cumple por $k^* \le k^*$.
+2. **Ninguna otra región cumple $\text{Cand}$.** Supongamos que $a \ne b$ cumplen $\text{Cand}$. Aplicando $\text{Cand}(a)$ con $o = b$ y $\text{Cand}(b)$ con $o = a$, las desigualdades estrictas de conteo son contradictorias, así que $c(a) = c(b)$. Entonces $a \le b$ y $b \le a$, es decir $a = b$, una contradicción.
+3. **Existencia.** $\prec$ es un orden total sobre un conjunto finito y no vacío (si $r \neq [\,]$), así que $k^*$ existe.
+
+El `for` produce entonces exactamente un elemento, $k^*$, y `headOption` lo devuelve como `Some(k*)`. Si $r = [\,]$ el mapa está vacío, el `for` no produce nada y el resultado es `None`. $\blacksquare$
+
+## 4. Punto 4: réplicas perezosas
+
+Sea $m > 0$ la magnitud inicial y $\rho(x) = \dfrac{\lfloor 100x + 0.5 \rfloor}{100}$ el redondeo a dos decimales. Definimos la sucesión ideal $a_0 = m,\ a_{n+1} = 0.8\, a_n$, es decir $a_n = m \cdot 0.8^n$.
+
+### 4.1 `replicas`
+
+**Especificación:** $\text{replicas}(m)$ es la sucesión infinita $[\rho(a_0), \rho(a_1), \rho(a_2), \ldots]$.
+
+`LazyList.iterate(m)(x => x * 0.8)` produce $x_0 = m,\ x_{n+1} = x_n \cdot 0.8$. Por inducción sobre $n$, $x_n = a_n$ (con la salvedad habitual de la aritmética de punto flotante, sobre la que se razona abajo):
+
+- **Caso base:** $x_0 = m = a_0$.
+- **Caso de inducción:** $x_{n+1} = x_n \cdot 0.8 \overset{HI}{=} a_n \cdot 0.8 = a_{n+1}$.
+
+Luego `.map(redondear)` aplica $\rho$ a cada elemento, y el elemento $n$ queda como $\rho(a_n)$. Se redondea *después* de iterar, así que el error de redondeo no se acumula de un paso al siguiente. $\blacksquare$
+
+**Salvedad (punto flotante).** Los `Double` acumulan un error relativo del orden de $10^{-16}$ por paso. El resultado difiere de $\rho(a_n)$ solo si $a_n$ está a ese orden de distancia de un punto medio $\frac{2j+1}{200}$. Con los datos del taller no ocurre.
+
+**Pereza.** `LazyList.iterate` y `map` sobre un `LazyList` no calculan el elemento $n$ hasta que alguien lo pide. Al llamar `replicas(m).take(4).toList` solo se evalúan los elementos $0, 1, 2, 3$. Los demás nunca se materializan, y por eso la memoria usada es proporcional a lo pedido y no al tamaño de la secuencia infinita.
+
+### 4.2 `replicasSensibles`
+
+**Especificación:** $\text{replicasSensibles}(m, \min) = [\, \rho(a_i) \mid 0 \le i < N \,]$, con $N = \min\{\, i \mid \rho(a_i) \le \min \,\}$, es decir, el prefijo de réplicas mayores que el mínimo. Supone $m > 0$ y $\min \ge 0$.
+
+**Argumento.**
+
+1. **Monotonía.** Como $a_{n+1} = 0.8\, a_n < a_n$ para $a_n > 0$, la sucesión $a_n$ es estrictamente decreciente. Como $\rho$ es monótona no decreciente, $\rho(a_n)$ es no creciente. Por tanto, el conjunto $\{ n \mid \rho(a_n) > \min \}$ es un **prefijo**: si $\rho(a_n) \le \min$, todos los siguientes también.
+2. **`takeWhile` coincide con ese prefijo.** `takeWhile(_ > minimo)` toma elementos mientras cumplan la condición y se detiene en el primero que no la cumple. Por el punto 1, ese primer fallo es el índice $N$ y todo lo que sigue tampoco la cumpliría. Así que `takeWhile` devuelve exactamente $[\rho(a_0), \ldots, \rho(a_{N-1})]$.
+3. **Terminación.** Como $a_n \to 0$, existe $n_0$ con $a_{n_0} < 0.005$, y entonces $\rho(a_{n_0}) = 0 \le \min$. Luego $N \le n_0$ y `takeWhile` evalúa a lo sumo $N + 1$ elementos de la secuencia, así que `toList` termina. (Si $\min < 0$ esta prueba no aplica y la función no terminaría; está fuera de la especificación.)
+4. **Caso vacío.** Si $\rho(a_0) \le \min$, entonces $N = 0$ y el resultado es $[\,]$.
+
+$\blacksquare$
+
+## 5. Punto 5: informe combinado
+
+**Especificación:** para cada $k \in R(r)$,
 
 ```math
-P_f(\text{List}(a_1)) \rightarrow \text{if } \text{List}(a_1).\text{tail.isEmpty then } \text{List}(a_1).\text{head else } \ldots \rightarrow \text{List}(a_1).\text{head} \rightarrow a_1
+\text{informe}(r, \min)(k) = \text{Resumen}\big(\, |S_k(r)|,\ \mu_k,\ |\text{replicasSensibles}(\mu_k, \min)| \,\big),
+\qquad \mu_k = \max\{\text{mag}(s) \mid s \in S_k(r)\}
 ```
 
-Por otro lado, $f(\text{List}(a_1)) = a_1$. Entonces
-$P_f(\text{List}(a_1)) == f(\text{List}(a_1))$.
+**Argumento.**
 
-**Caso de inducción:** $n = k + 1$, $k \geq 1$. Se debe demostrar:
+1. `conteos` y `maximas` se construyen sobre $\text{porRegion}(r)$, así que ambos tienen las mismas llaves, $R(r)$. Por lo tanto `maximas(region)` está definido para toda llave de `conteos`.
+2. Por 2.2, `conteos(k)` $= |S_k(r)|$. Por 2.3, `maximas(k)` $= \mu_k$.
+3. Por 4.2, `replicasSensibles(maximas(k), minimo).length` es $|\text{replicasSensibles}(\mu_k, \min)|$.
+4. El `for` sobre `conteos` con `yield region -> Resumen(...)` es un `map` sobre las entradas, que construye una entrada por cada $k \in R(r)$. Las llaves son las mismas y cada valor es el pedido.
+5. Si $r = [\,]$, $R(r) = \emptyset$ y el resultado es `Map()`.
 
-```math
-P_f(\text{List}(b_1, b_2, \ldots, b_k)) == f(\text{List}(b_1, b_2, \ldots, b_k)) \rightarrow P_f(\text{List}(a_1, a_2, \ldots, a_{k+1})) == f(\text{List}(a_1, a_2, \ldots, a_{k+1}))
-```
+$\blacksquare$
 
-Empecemos por calcular qué devuelve $P_f$ usando el modelo de sustitución:
+## 6. Independencia del orden de recorrido
 
-```math
-P_f(L) \rightarrow \text{if } L.\text{tail.isEmpty then } L.\text{head else math.max}(P_f(L.\text{tail}), L.\text{head})
-```
+Los resultados de las funciones de agrupación no dependen del orden en que se recorran el registro ni los mapas, por las siguientes razones:
 
-```math
-\rightarrow \text{math.max}(P_f(\text{List}(a_2, \ldots, a_{k+1})), a_1)
-```
-
-Sea $b = P_f(\text{List}(a_2, \ldots, a_{k+1}))$; por la hipótesis de
-inducción, $b = f(\text{List}(a_2, \ldots, a_{k+1}))$. Hay dos posibilidades:
-
-- Si $\text{math.max}(b, a_1) = b$, entonces $b \geq a_1$ y
- $b == f(\text{List}(a_1, a_2, \ldots, a_{k+1}))$.
-- Si $\text{math.max}(b, a_1) = a_1$, entonces $a_1 \geq b$ y
- $a_1 == f(\text{List}(a_1, a_2, \ldots, a_{k+1}))$.
-
-Por lo tanto, $P_f(L) == f(L)$.
-
-Concluimos por inducción que:
-
-```math
-\forall n \in \mathbb{N} \setminus \{0\} : P_f(\text{List}(a_1, a_2, \ldots, a_n)) == f(\text{List}(a_1, a_2, \ldots, a_n))
-```
-
-## 2. Argumentar la corrección de programas iterativos
-
-Para argumentar la corrección de programas iterativos, se debe formalizar cómo
-es la iteración. Esto implica definir:
-
-- Cómo se representa un estado de la iteración, $s$.
-- Cuál es el estado inicial, $s_0$.
-- Cuál es el estado final (o cómo se reconoce que un estado es final): $s_f$.
-- Qué condición (o predicado) cumple todo estado: $\text{Inv}(s)$ (invariante
-  de la iteración).
-- El mecanismo para pasar de un estado al siguiente: $\text{transformar}(s)$.
-  Si $s_i$ es el estado $i$, entonces $\text{transformar}(s_i) = s_{i+1}$.
-
-Un programa iterativo tiene la siguiente forma:
-
-```scala
-def Pf(a: A): B = { // Pf recibe a de tipo A, y devuelve f(a) de tipo B
-  def Pf_iter(s: Estado): B =
-    if (esFinal(s)) respuesta(s) else Pf_iter(transformar(s))
-  Pf_iter(s0)
-}
-```
-
-Demostración de corrección:
-
-- $\text{Inv}(s_0)$: el estado inicial cumple la condición invariante.
-- Si $(s_i \neq s_f \land \text{Inv}(s_i)) \rightarrow \text{Inv}(\text{transformar}(s_i))$:
-  el nuevo estado cumple la condición invariante si el estado anterior la
-  cumplía.
-- De lo anterior se concluye $\text{Inv}(s_f)$, es decir, el estado final
-  cumple la condición invariante. Luego,
-  $\text{Inv}(s_f) \rightarrow \text{respuesta}(s_f) == f(a)$.
-- Finalmente, demostrar que siempre se llega al estado final $s_f$. Esto
-  implica que
-  $P_f(a) == \text{iter}(s_0) == \text{respuesta}(s_f) == f(a)$.
-
-### Ejemplo: factorial iterativo
-
-Considere el siguiente programa iterativo en Scala para calcular la función
-factorial:
-
-```scala
-def Pf(n: Int): Int = { // Pf recibe n de tipo Int, y devuelve n! de tipo Int
-  def Pf_iter(i: Int, n: Int, ac: Int): Int =
-    if (i > n) ac else Pf_iter(i + 1, n, i * ac)
-  Pf_iter(1, n, 1)
-}
-```
-
-Este programa implementa el siguiente proceso iterativo:
-
-- Un estado $s = (i, n, ac)$.
-- El estado inicial es $s_0 = (1, n, 1)$.
-- $(i, n, ac)$ es final si $i > n$, o lo que es lo mismo, si $i = n + 1$.
-- La invariante de ciclo es
-  $\text{Inv}(i, n, ac) \equiv i \leq n + 1 \land ac = (i-1)!$.
-  La invariante de ciclo es una relación que SIEMPRE se cumple en el ciclo.
-- $\text{transformar}((i, n, ac)) = (i+1, n, i \ast ac)$.
-
-Ahora, demostramos los puntos mencionados:
-
-**1.** $\text{Inv}(s_0)$: el estado inicial cumple la condición invariante.
-
-```math
-s_0 = (1, n, 1) \implies 1 \leq n + 1 \land 1 = 0!
-```
-
-**2.** La invariante se mantiene con la transformación de estados,
-$(s_i \neq s_f \land \text{Inv}(s_i)) \rightarrow \text{Inv}(\text{transformar}(s_i))$:
-
-1. Primer cambio, $i = i + 1$, lo que implica $ac = ((i+1) - 1)! = i!$.
-2. Segundo cambio, $ac = i \ast ac$, entonces $ac = (i - 1)! \ast i = i!$.
-3. Como se puede ver en ambos cambios indicados en la transformación, la
-   invariante se mantiene.
-
-**3.** $\text{Inv}(s_f) \rightarrow \text{respuesta}(s_f) == f(a)$
-
-```math
-(n + 1 \leq n + 1) \land ac = ((n+1)-1)! \rightarrow ac == n!
-```
-
-**4.** En cada paso, la componente $i$ del estado incrementa, acercándose a $n+1$.
-Después de $n$ iteraciones, se alcanza $n+1$.
-
-Esto implica que $P_f(n) == \text{iter}(1, n, 1) == n!$
-
-### Ejemplo: el máximo de una lista
-
-Se desea calcular el máximo de una lista de enteros positivos, no vacía. Sea
-$f : \text{List}[\mathbb{N}] \to \mathbb{N}$ la función que calcula ese valor.
-Y sea $P_f$ el siguiente programa en Scala:
-
-```scala
-def maxIt(l: List[Int]): Int = {
-  def maxAux(max: Int, l: List[Int]): Int = {
-    if (l.isEmpty) max
-    else maxAux(math.max(max, l.head), l.tail)
-  }
-  maxAux(l.head, l.tail)
-}
-```
-
-Este programa implementa el siguiente proceso iterativo:
-
-- Un estado $s = (max, l)$ donde $l = \text{List}(a_i, a_{i+1}, \ldots, a_k)$
-  es una cola de $L$.
-- El estado inicial es
-  $s_0 = (L.\text{head}, L.\text{tail}) = (a_1, \text{List}(a_2, \ldots, a_k))$.
-- $s = (max, l)$ es final si $l$ es vacía.
-- $\text{Inv}(max, l) \equiv l = \text{List}(a_i, a_{i+1}, \ldots, a_k) \land max = f(\text{List}(a_1, a_2, \ldots, a_{i-1}))$.
-- $\text{transformar}((max, l)) = (nmax, l.\text{tail})$ donde $nmax = max$ si
-  $max \geq l.\text{head}$, y $nmax = l.\text{head}$ si no.
-
-Demostración de los puntos:
-
-**1.** $\text{Inv}(s_0)$: el estado inicial cumple la condición invariante.
-
-```math
-s_0 = (a_1, \text{List}(a_2, \ldots, a_k)) \implies a_1 = f(\text{List}(a_1))
-```
-
-**2.** $(s_i \neq s_f \land \text{Inv}(s_i)) \rightarrow \text{Inv}(\text{transformar}(s_i))$
-
-```math
-\neg\, l.\text{isEmpty} \land l = \text{List}(a_i, a_{i+1}, \ldots, a_k) \land max = f(\text{List}(a_1, a_2, \ldots, a_{i-1}))
-```
-
-```math
-\rightarrow l.\text{tail} = \text{List}(a_{i+1}, \ldots, a_k) \land nmax = f(\text{List}(a_1, \ldots, a_i))
-```
-
-**3.** $\text{Inv}(s_f) \rightarrow \text{respuesta}(s_f) == f(a)$
-
-```math
-\text{Inv}((max, \text{List}())) \rightarrow max = f(\text{List}(a_1, \ldots, a_k))
-```
-
-**4.** En cada paso, la lista $l$ se reduce, acercándose a ser vacía. Después de
-$k$ iteraciones, $l = \text{List}()$.
-
-Esto implica que $P_f(L) == \text{maxAux}(L.\text{head}, L.\text{tail}) == f(L)$
+- **`conteoPorRegion`:** el valor $|S_k(r)|$ es una cardinalidad, que no depende del orden de los elementos.
+- **`magnitudMaxima`:** $\max$ es conmutativa y asociativa, así que $\max\{x_1, \ldots, x_n\}$ es el mismo para cualquier permutación de los $x_i$.
+- **`porRegion`:** como mapa, su igualdad no depende del orden de las entradas: dos mapas son iguales si tienen las mismas parejas llave-valor. Dentro de cada grupo el orden sí importa, y `groupBy` lo fija de forma determinista como el orden del registro (invariante de 2.1).
+- **`regionMasActiva`:** `forall` es una conjunción, y la conjunción es conmutativa. Además, por el punto 2 del argumento 3.3, a lo sumo una región cumple $\text{Cand}$. Por eso el resultado no depende del orden en que el `for` recorra las entradas del mapa. Esto importa porque el orden de iteración de un `Map` no está especificado.
+- **`informe`:** cada entrada se calcula solo a partir de los datos de su propia región, así que el orden en que se procesen las regiones no cambia el resultado.
+- **`paresCercanos`:** el orden de salida es una elección de especificación (orden de primera aparición), no un efecto del recorrido. Y como $\text{cerc}$ es simétrica, el conjunto de pares no cambia si se invierte el orden de los elementos dentro de cada pareja.
+- **`replicas` / `replicasSensibles`:** la sucesión está definida por $a_{n+1} = 0.8\, a_n$, que fija el orden de los elementos. No hay recorrido libre.

@@ -43,30 +43,14 @@ class RegistroSismico {
 
   // Punto 2: agrupar con mapas --------------------------------------------------
 
-  def porRegion(r: Registro): Map[String, List[Sismo]] = {
-    (for {
-      r1 <- r
-    }yield r1.region -> (for{
-      r2 <- r
-      if r1.region == r2.region
-    }yield r2)).toMap
-  }
+  def porRegion(r: Registro): Map[String, List[Sismo]] =
+    r.groupBy(_.region)
 
   def conteoPorRegion(r: Registro): Map[String, Int] =
-    (for {
-      s1 <- r
-    } yield s1.region -> (for {
-      s2 <- r
-      if s2.region == s1.region
-    } yield s2).size).toMap
+    for ((region, ss) <- porRegion(r)) yield region -> ss.size
 
   def magnitudMaxima(r: Registro): Map[String, Double] =
-    (for {
-      s1 <- r
-    } yield s1.region -> (for {
-      s2 <- r
-      if s2.region == s1.region
-    } yield s2.magnitud).max).toMap
+    for ((region, ss) <- porRegion(r)) yield region -> ss.map(_.magnitud).max
 
   // Punto 3: consultas seguras --------------------------------------------------
 
@@ -100,10 +84,8 @@ class RegistroSismico {
   def redondear(x: Double): Double = Math.round(x * 100.0) / 100.0
 
   /** La secuencia infinita que empieza en la magnitud y multiplica por 0.8. */
-  def replicas(magnitud: Double): LazyList[Double] = {
-    def redondear(x: Double): Double = Math.round(x * 100.0) / 100.0
+  def replicas(magnitud: Double): LazyList[Double] =
     LazyList.iterate(magnitud)(x => x * 0.8).map(redondear)
-  }
 
   /** Las réplicas mientras superen el mínimo, incluida la primera. */
   def replicasSensibles(magnitud: Double, minimo: Double): List[Double] =
