@@ -39,11 +39,13 @@ recorrida. Las reglas que se aplican en este taller son:
 - Una guarda `if p` se traduce en un `withFilter(p)` que descarta los elementos
   que no cumplen la condición.
 - Dos generadores `x <- c1` e `y <- c2` se traducen en `c1.flatMap(x => c2.map(y => ...))`.
-- Un generador con patrón, como `a :: resto <- lista`, descarta con
-  `withFilter` los elementos que no encajan con el patrón.
+- Un generador con patrón, como `a :: resto <- lista` o `(k, v) <- mapa`,
+  descarta con `withFilter` los elementos que no encajan con el patrón.
+- Si la colección recorrida es un `Map`, el `map` del `for` **devuelve otro
+  `Map`**: no hace falta `.toMap` al final.
 
 Por eso `for` produce siempre una colección nueva y no muta nada. Esta tabla
-resume la traducción de las expresiones `for` del taller, y las secciones
+resume la traducción de las expresiones `for` del proyecto, y las secciones
 siguientes las detallan una por una:
 
 | Función | Expresión `for` | Se traduce en |
@@ -52,19 +54,16 @@ siguientes las detallan una por una:
 | `enRegion` | `s <- r; if s.region == region` | `r.withFilter(...).map(...)` |
 | `paresCercanos` (regiones) | `s <- r` | `r.map(...)` |
 | `paresCercanos` (parejas) | `a :: resto <- regiones.tails; b <- resto; if cercanas(a, b)` | `regiones.tails.withFilter(...).flatMap(...)` |
-| `porRegion` (externo) | `r1 <- r` | `r.map(...)` |
-| `porRegion` (interno) | `r2 <- r; if r1.region == r2.region` | `r.withFilter(...).map(...)` |
-| `conteoPorRegion` (externo) | `s1 <- r` | `r.map(...)` |
-| `conteoPorRegion` (interno) | `s2 <- r; if s2.region == s1.region` | `r.withFilter(...).map(...).size` |
-| `magnitudMaxima` (externo) | `s1 <- r` | `r.map(...)` |
-| `magnitudMaxima` (interno) | `s2 <- r; if s2.region == s1.region` | `r.withFilter(...).map(...).max` |
+| `conteoPorRegion` | `(region, ss) <- porRegion(r)` | `porRegion(r).map {...}` (devuelve un `Map`) |
+| `magnitudMaxima` | `(region, ss) <- porRegion(r)` | `porRegion(r).map {...}` (devuelve un `Map`) |
 | `maximaDe` | `s <- r; if s.region == region` | `r.withFilter(...).map(...).maxOption` |
 | `regionMasActiva` | `(region, n) <- regiones; if regiones.forall(...)` | `regiones.withFilter(...).map(...)` |
-| `informe` | `(region, n) <- conteos` | `conteos.map(...)` |
+| `informe` | `(region, n) <- conteos` | `conteos.map {...}` (devuelve un `Map`) |
 
-`conteoSeguro`, `replicas` y `replicasSensibles` no usan `for`: reutilizan
-otras funciones y aplican `withDefaultValue`, `LazyList.iterate`+`map` y
-`takeWhile` respectivamente. Por eso no aparecen en la tabla.
+Las demás funciones no usan `for`: `porRegion` aplica `groupBy`, `conteoSeguro`
+aplica `withDefaultValue`, `redondear` usa `Math.round`, `replicas` combina
+`LazyList.iterate` con `map` y `replicasSensibles` termina con `takeWhile`. Por
+eso no aparecen en la tabla.
 
 ## 2. Punto 1: consultas con expresiones `for`
 
@@ -321,151 +320,131 @@ próximo es $|5.3 - 5.1| = 0.2 > 0.1$, y devuelve `List()`.
 
 ## 3. Punto 2: agrupar con mapas
 
-Las tres funciones siguen el mismo esquema: recorrer el registro y, para cada
-región, construir el resumen mirando otra vez el registro. El `for` externo
-produce pares $g \mapsto v$ y `.toMap` los convierte en un `Map[String, X]`.
+El esquema es jerárquico: `porRegion` construye el agrupamiento base con
+`groupBy`, y las otras dos funciones lo **recorren** con un `for` que produce
+un par $g \mapsto v$ por cada entrada del mapa de regiones.
 
-**Cómo se ejecuta `toMap`.** Si la lista de pares es
-$\text{List}(k_1 \mapsto v_1, k_2 \mapsto v_2, \ldots)$, `toMap` inserta los
-pares de izquierda a derecha; cuando una clave se repite, el valor que queda es
-el **último** insertado:
+**Cómo se ejecuta `groupBy`.** `groupBy(f)` recorre la colección una sola vez y
+devuelve un `Map` que lleva cada clave $f(x)$ a la lista de elementos que la
+produjeron, en el orden de aparición:
 
 $$
-\text{toMap}\left(\text{List}(k \mapsto v_1, k \mapsto v_2)\right) = \{k \mapsto v_2\}
+\text{groupBy}(f)\left(\text{List}(x_1, \ldots, x_n)\right) = \text{toMap}\left(\langle\, f(x_i) \mapsto \langle\, x_j \mid f(x_j) = f(x_i) \,\rangle \mid x_i \in \text{List}(x_1, \ldots, x_n) \,\rangle\right)
 $$
 
-En estas tres funciones eso no cambia el resultado: para una misma región $g$,
-el par $g \mapsto v$ se calcula siempre con la misma regla a partir del mismo
-registro, así que todos los valores calculados para $g$ son iguales entre sí.
-Es lo que permite decir, en el informe de corrección, que el resultado no
-depende del orden de recorrido.
+A diferencia del `for` anidado, `groupBy` no vuelve a recorrer la lista una vez
+por cada elemento: la recorre una sola vez y va acumulando. Por eso
+`porRegion(R)` tiene una sola clave por región distinta, sin claves repetidas
+que resolver.
+
+**Cómo se ejecuta un `for` sobre un `Map`.** Al recorrer un mapa, el generador
+`(clave, valor) <- mapa` aporta pares, y `yield` construye un nuevo mapa con esos
+pares, porque el `map` de un `Map` devuelve otro `Map`:
+
+$$
+\text{map}(g)\left(M\right) = \text{toMap}\left(\langle\, k \mapsto g(k, M(k)) \mid k \in \text{dominio}(M) \,\rangle\right)
+$$
+
+No hace falta llamar a `.toMap` después del `for`: el `Map` ya lo es. Esto es lo
+que mantiene la propiedad que pide el criterio de colecciones **inmutables y
+expresiones `for`**: cada función produce una colección nueva y no modifica la
+recibida.
 
 Las funciones que se usan para definir los agrupamientos son:
 
 $$
-\text{porRegion}(R) = \text{toMap}\left(
-  \langle\, g_r \mapsto \langle\, s \mid s \in R \land s.\text{region} = g_r \,\rangle \mid r \in R \,\rangle
-\right)
+\text{porRegion}(R) = \text{groupBy}(s \mapsto s.\text{region})(R)
 $$
 
 $$
-\text{conteoPorRegion}(R) = \text{toMap}\left(
-  \langle\, g_r \mapsto \left|\langle\, s \mid s \in R \land s.\text{region} = g_r \,\rangle\right| \mid r \in R \,\rangle
-\right)
+\text{conteoPorRegion}(R) = \text{map}\left((g, \ell) \mapsto (g, \left|\ell\right|)\right)\left(\text{porRegion}(R)\right)
 $$
 
 $$
-\text{magnitudMaxima}(R) = \text{toMap}\left(
-  \langle\, g_r \mapsto \max\langle\, s.\text{magnitud} \mid s \in R \land s.\text{region} = g_r \,\rangle \mid r \in R \,\rangle
-\right)
+\text{magnitudMaxima}(R) = \text{map}\left((g, \ell) \mapsto (g, \max\langle\, s.\text{magnitud} \mid s \in \ell \,\rangle)\right)\left(\text{porRegion}(R)\right)
 $$
 
-donde $g_r$ es $r.\text{region}$ y $\left|\ell\right|$ es la longitud de la
-lista $\ell$. Las tres funciones no toman listas prestadas de otro sitio:
-se construyen con `toMap`, que es lo que la rúbrica exige para los
-agrupamientos.
+donde $\left|\ell\right|$ es la longitud de la lista $\ell$. Las tres devuelven
+un `Map` **nuevo**: `groupBy` en la primera, y el `map` del `for` en las otras
+dos.
 
 ### 3.1 `porRegion`
 
 ```scala
-def porRegion(r: Registro): Map[String, List[Sismo]] = {
-  (for {
-    r1 <- r
-  } yield r1.region -> (for {
-    r2 <- r
-    if r1.region == r2.region
-  } yield r2)).toMap
-}
+def porRegion(r: Registro): Map[String, List[Sismo]] =
+  r.groupBy(_.region)
 ```
 
-**Traducción de los `for`:** el externo es
-`r.map(r1 => r1.region -> (...))`; el interno es
-`r.withFilter(r2 => r1.region == r2.region).map(r2 => r2)`.
+**Traducción:** no hay `for`. La función equivale a
+`r.groupBy(s => s.region)`, que agrupa los sismos por región en un solo
+recorrido.
 
-**Ejecución paso a paso.** Para cada $r_1$ del registro se calcula el par
-$g_{r_1} \mapsto \text{enRegion de } g_{r_1}$:
+**Ejecución paso a paso.** `groupBy` visita los siete sismos en orden y va
+colocando cada uno en la lista de su región:
 
-| # | $r_1$ | $g_{r_1}$ | Valor calculado por el `for` interno |
+| # | Sismo | Clave $g$ | Lista de $g$ tras el paso |
 |---|---|---|---|
-| 1 | Valle 4.2 | Valle | $\text{List}(\text{Valle } 4.2, \text{Valle } 3.8, \text{Valle } 5.3)$ |
-| 2 | Santander 5.1 | Santander | $\text{List}(\text{Santander } 5.1, \text{Santander } 4.7)$ |
-| 3 | Valle 3.8 | Valle | la misma lista del paso 1 |
-| 4 | Choco 6.0 | Choco | $\text{List}(\text{Choco } 6.0, \text{Choco } 3.1)$ |
-| 5 | Santander 4.7 | Santander | la misma lista del paso 2 |
-| 6 | Valle 5.3 | Valle | la misma lista del paso 1 |
-| 7 | Choco 3.1 | Choco | la misma lista del paso 4 |
+| 1 | Valle 4.2 | Valle | $\text{List}(\text{Valle } 4.2)$ |
+| 2 | Santander 5.1 | Santander | $\text{List}(\text{Santander } 5.1)$ |
+| 3 | Valle 3.8 | Valle | $\text{List}(\text{Valle } 4.2, \text{Valle } 3.8)$ |
+| 4 | Choco 6.0 | Choco | $\text{List}(\text{Choco } 6.0)$ |
+| 5 | Santander 4.7 | Santander | $\text{List}(\text{Santander } 5.1, \text{Santander } 4.7)$ |
+| 6 | Valle 5.3 | Valle | $\text{List}(\text{Valle } 4.2, \text{Valle } 3.8, \text{Valle } 5.3)$ |
+| 7 | Choco 3.1 | Choco | $\text{List}(\text{Choco } 6.0, \text{Choco } 3.1)$ |
 
-La lista de pares tiene siete entradas y tres claves distintas; `toMap` deja
-tres claves y conserva, para Valle, el par del paso 6, que es idéntico al del
-paso 1. El resultado reparte los siete sismos en las tres regiones, y dentro de
-cada lista se mantiene el orden de aparición en el registro.
+Al terminar el recorrido quedan tres claves, cada una con su lista completa:
+`Map(Valle -> List(Valle 4.2, Valle 3.8, Valle 5.3), Santander -> List(...), Choco -> List(...))`.
+Los siete sismos aparecen una sola vez y, dentro de cada lista, en el orden en
+que estaban en el registro. Con el registro vacío el resultado es `Map()`.
 
 ### 3.2 `conteoPorRegion`
 
-Es el mismo esquema, con `.size` en lugar de la lista:
-
 ```scala
 def conteoPorRegion(r: Registro): Map[String, Int] =
-  (for {
-    s1 <- r
-  } yield s1.region -> (for {
-    s2 <- r
-    if s2.region == s1.region
-  } yield s2).size).toMap
+  for ((region, ss) <- porRegion(r)) yield region -> ss.size
 ```
 
-**Traducción:** el `for` externo es `r.map(s1 => s1.region -> (...).size)`, y
-el interno `r.withFilter(s2 => s2.region == s1.region).map(s2 => s2)`. Su
-longitud es el número de sismos de la región de $s_1$:
+**Traducción:** `porRegion(r).map { case (region, ss) => region -> ss.size }`.
+El generador con patrón `(region, ss) <- porRegion(r)` recorre las entradas del
+mapa base; `yield` arma un par por entrada y el `map` de un `Map` devuelve otro
+`Map`, por eso no hay `.toMap`.
 
-$$
-\text{size}\left(\langle\, s_2 \mid s_2 \in R \land s_2.\text{region} = g_{s_1} \,\rangle\right) =
-\left|\{s \in R \mid s.\text{region} = g_{s_1}\}\right|
-$$
+**Ejecución paso a paso.** Para cada entrada $\ell$ del mapa base se toma su
+longitud:
 
-**Ejecución paso a paso:**
+| Entrada de `porRegion(r)` | Longitud $\ell$ |
+|---|---|
+| Valle $\mapsto \text{List}(4.2, 3.8, 5.3)$ | 3 |
+| Santander $\mapsto \text{List}(5.1, 4.7)$ | 2 |
+| Choco $\mapsto \text{List}(6.0, 3.1)$ | 2 |
 
-| # | $s_1$ | $g_{s_1}$ | Cantidad de sismos de $g_{s_1}$ |
-|---|---|---|---|
-| 1 | Valle 4.2 | Valle | 3 |
-| 2 | Santander 5.1 | Santander | 2 |
-| 3 | Valle 3.8 | Valle | 3 |
-| 4 | Choco 6.0 | Choco | 2 |
-| 5 | Santander 4.7 | Santander | 2 |
-| 6 | Valle 5.3 | Valle | 3 |
-| 7 | Choco 3.1 | Choco | 2 |
-
-`toMap` deja `Map(Valle -> 3, Santander -> 2, Choco -> 2)`. Con el registro
-vacío el `map` externo no produce pares y `toMap` da `Map()`.
+Resultado: `Map(Valle -> 3, Santander -> 2, Choco -> 2)`. Con el registro vacío
+`porRegion` da `Map()` y el `for` no produce pares, así que el resultado es
+`Map()`.
 
 ### 3.3 `magnitudMaxima`
 
 ```scala
 def magnitudMaxima(r: Registro): Map[String, Double] =
-  (for {
-    s1 <- r
-  } yield s1.region -> (for {
-    s2 <- r
-    if s2.region == s1.region
-  } yield s2.magnitud).max).toMap
+  for ((region, ss) <- porRegion(r)) yield region -> ss.map(_.magnitud).max
 ```
 
-**Traducción:** igual que `conteoPorRegion`, pero el `for` interno proyecta
-`s2.magnitud` y sobre esa lista se aplica `.max`.
+**Traducción:** `porRegion(r).map { case (region, ss) => region -> ss.map(_.magnitud).max }`.
+Igual que `conteoPorRegion`, pero en lugar de la longitud se proyectan las
+magnitudes de la lista con `ss.map(_.magnitud)` y se toma `.max`.
 
-**Ejecución paso a paso.** Para cada región, el `for` interno produce la lista
-de magnitudes y `.max` toma la mayor:
+**Ejecución paso a paso.** Para cada entrada del mapa base:
 
-| Región | Lista del `for` interno | `.max` |
+| Entrada de `porRegion(r)` | `ss.map(_.magnitud)` | `.max` |
 |---|---|---|
 | Valle | $\text{List}(4.2, 3.8, 5.3)$ | $5.3$ |
 | Santander | $\text{List}(5.1, 4.7)$ | $5.1$ |
 | Choco | $\text{List}(6.0, 3.1)$ | $6.0$ |
 
 Resultado: `Map(Valle -> 5.3, Santander -> 5.1, Choco -> 6.0)`. Las regiones
-que no están en el registro no aparecen, porque nunca llegan a ser una $s_1$ y
-su lista nunca se construye; por eso `.max` nunca se aplica a una lista vacía,
-que lanzaría `UnsupportedOperationException`.
+que no están en el registro no aparecen, porque no son una entrada de
+`porRegion(r)` y su lista nunca se construye; por eso `.max` nunca se aplica a
+una lista vacía, que lanzaría `UnsupportedOperationException`.
 
 ## 4. Punto 3: consultas seguras
 
@@ -574,16 +553,30 @@ se cumple; solo sobrevive `Arauca`.
 
 ## 5. Punto 4: réplicas perezosas
 
-### 5.1 `replicas`
+### 5.1 `redondear` y `replicas`
+
+El punto 4 tiene dos funciones. `redondear` es un auxiliar de la clase, y
+`replicas` lo usa para construir la secuencia perezosa:
 
 ```scala
-def replicas(magnitud: Double): LazyList[Double] = {
-  def redondear(x: Double): Double = Math.round(x * 100.0) / 100.0
+def redondear(x: Double): Double = Math.round(x * 100.0) / 100.0
+
+def replicas(magnitud: Double): LazyList[Double] =
   LazyList.iterate(magnitud)(x => x * 0.8).map(redondear)
-}
 ```
 
-**Especificación.** La función describe una secuencia infinita de magnitudes
+**`redondear` paso a paso.** Multiplica por $100$, redondea al entero más
+cercano con `Math.round` y vuelve a dividir por $100$, así que deja dos
+decimales:
+
+| $x$ | $100x$ | $\text{round}(100x)$ | Resultado |
+|---|---|---|---|
+| $5.3$ | $530.0$ | $530$ | $5.3$ |
+| $4.24$ | $424.0$ | $424$ | $4.24$ |
+| $3.392$ | $339.2$ | $339$ | $3.39$ |
+| $3.072$ | $307.2$ | $307$ | $3.07$ |
+
+**Especificación de `replicas`.** Describe una secuencia infinita de magnitudes
 que empieza en $m$ y multiplica por $0.8$ en cada paso, redondeando cada valor
 a dos decimales:
 
