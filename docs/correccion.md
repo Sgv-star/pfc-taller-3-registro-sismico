@@ -8,11 +8,11 @@ Sea $r = [s_1, s_2, \ldots, s_n]$ un registro, con $s_i = (\text{fecha}_i, \text
 Escribimos $\text{reg}(s)$ y $\text{mag}(s)$ para la región y la magnitud de un sismo $s$.
 Para una lista $l$ y una región $k$ definimos:
 
-```math
+$$
 R(l) = \{\, \text{reg}(s) \mid s \in l \,\}
 \qquad
 S_k(l) = [\, s_i \mid s_i \in l,\ \text{reg}(s_i) = k \,]
-```
+$$
 
 $S_k(l)$ es la sublista de los sismos de la región $k$, **conservando el orden** original.
 
@@ -26,22 +26,22 @@ for { x <- l; if p(x) } yield g(x)   ==>   l.withFilter(p).map(g)
 
 Para toda lista $l = [x_1, \ldots, x_n]$, predicado $p$ y función $g$:
 
-```math
+$$
 \texttt{for}\{x \leftarrow l;\ \texttt{if}\ p(x)\}\ \texttt{yield}\ g(x) \;=\; [\, g(x_i) \mid 1 \le i \le n,\ p(x_i) \,]
-```
+$$
 
 **Demostración** (inducción estructural sobre $l$). Sea $Q(l)$ el lado izquierdo.
 
 - **Caso base:** $l = \text{Nil}$. $Q(\text{Nil}) = \text{Nil}$, y el lado derecho también es la lista vacía.
 - **Caso de inducción:** $l = x :: t$, con $Q(t) = [\, g(y) \mid y \in t,\ p(y) \,]$ (HI). Por la definición de `withFilter` y `map` sobre listas:
 
-```math
+$$
 Q(x :: t) =
 \begin{cases}
 g(x) :: Q(t) & \text{si } p(x) \\
 Q(t) & \text{si } \neg p(x)
 \end{cases}
-```
+$$
 
 Aplicando la HI, en ambos casos se obtiene $[\, g(y) \mid y \in x::t,\ p(y) \,]$, en el mismo orden. $\blacksquare$
 
@@ -63,15 +63,15 @@ El código es `for { s <- r; if s.region == region } yield s.magnitud`. Es el Le
 
 Sea $R(r)$ las regiones distintas y $[g_1, \ldots, g_m]$ su orden de **primera aparición** en $r$. Sea $M_k = \text{enRegion}(r, k)$. Definimos:
 
-```math
+$$
 \text{cerc}(a, b) \iff \exists\, x \in M_a,\ \exists\, y \in M_b : |x - y| \le \text{dif}
-```
+$$
 
 **Especificación:**
 
-```math
+$$
 \text{paresCercanos}(r, \text{dif}) = [\, (g_i, g_j) \mid 1 \le i < j \le m,\ \text{cerc}(g_i, g_j) \,]
-```
+$$
 
 ordenada lexicográficamente por $(i, j)$.
 
@@ -101,9 +101,9 @@ Los pares generados son exactamente los $(g_i, g_j)$ con $i < j$ y $\text{cerc}(
 - **Transformación:** $\text{transformar}(i, M) = (i+1,\ M[\text{reg}(s_{i+1}) \mapsto M(\text{reg}(s_{i+1})) \mathbin{+\!\!+} [s_{i+1}]\,])$, tomando $M(k) = [\,]$ si $k \notin \text{dom}(M)$.
 - **Invariante:**
 
-```math
+$$
 \text{Inv}(i, M) \equiv \text{dom}(M) = R([s_1..s_i]) \ \land\ \forall k \in \text{dom}(M) : M(k) = S_k([s_1..s_i])
-```
+$$
 
 **Demostración.**
 
@@ -138,13 +138,13 @@ Es el mismo `map` sobre las entradas de $\text{porRegion}(r)$, reemplazando $S_k
 
 **Especificación:**
 
-```math
+$$
 \text{conteoSeguro}(r)(k) =
 \begin{cases}
 |S_k(r)| & \text{si } k \in R(r) \\
 0 & \text{si } k \notin R(r)
 \end{cases}
-```
+$$
 
 `withDefaultValue(0)` devuelve un mapa que se comporta igual que el original para las llaves presentes y devuelve $0$ para las ausentes. Por 2.2, el mapa original tiene $k \mapsto |S_k(r)|$ para $k \in R(r)$, así que se cumple la especificación. $\blacksquare$
 
@@ -152,13 +152,13 @@ Es el mismo `map` sobre las entradas de $\text{porRegion}(r)$, reemplazando $S_k
 
 **Especificación:**
 
-```math
+$$
 \text{maximaDe}(r, k) =
 \begin{cases}
 \text{Some}\left(\max\{\text{mag}(s) \mid s \in S_k(r)\}\right) & \text{si } S_k(r) \ne [\,] \\
 \text{None} & \text{si } S_k(r) = [\,]
 \end{cases}
-```
+$$
 
 Por el Lema 1, el `for` produce $L = [\, \text{mag}(s) \mid s \in S_k(r) \,]$. La función `maxOption` devuelve `None` si $L = [\,]$ y `Some(max L)` si no. Como $L = [\,]$ exactamente cuando $S_k(r) = [\,]$, se cumple la especificación. $\blacksquare$
 
@@ -166,15 +166,15 @@ Por el Lema 1, el `for` produce $L = [\, \text{mag}(s) \mid s \in S_k(r) \,]$. L
 
 Sea $c(k) = |S_k(r)|$. **Especificación:** si $r = [\,]$ el resultado es `None`. Si no, es `Some(k*)` donde $k^*$ es la región con mayor $c$ y, en empate, la menor alfabéticamente:
 
-```math
+$$
 k^* = \min_{\prec} R(r), \qquad a \prec b \iff c(a) > c(b) \ \lor\ (c(a) = c(b) \land a < b)
-```
+$$
 
 **Argumento.** Con $c$ = `conteoSeguro(r)`, el filtro del `for` deja una región $k$ si
 
-```math
+$$
 \text{Cand}(k) \equiv \forall (o, m) \in c : \ m < c(k)\ \lor\ (m = c(k) \land k \le o)
-```
+$$
 
 1. **$k^*$ cumple $\text{Cand}$.** Para toda otra región $o$, $k^* \prec o$, es decir $c(k^*) > c(o)$ o ($c(k^*) = c(o)$ y $k^* < o$). Para $o = k^*$ la condición se cumple por $k^* \le k^*$.
 2. **Ninguna otra región cumple $\text{Cand}$.** Supongamos que $a \ne b$ cumplen $\text{Cand}$. Aplicando $\text{Cand}(a)$ con $o = b$ y $\text{Cand}(b)$ con $o = a$, las desigualdades estrictas de conteo son contradictorias, así que $c(a) = c(b)$. Entonces $a \le b$ y $b \le a$, es decir $a = b$, una contradicción.
@@ -218,10 +218,10 @@ $\blacksquare$
 
 **Especificación:** para cada $k \in R(r)$,
 
-```math
+$$
 \text{informe}(r, \min)(k) = \text{Resumen}\big(\, |S_k(r)|,\ \mu_k,\ |\text{replicasSensibles}(\mu_k, \min)| \,\big),
 \qquad \mu_k = \max\{\text{mag}(s) \mid s \in S_k(r)\}
-```
+$$
 
 **Argumento.**
 
